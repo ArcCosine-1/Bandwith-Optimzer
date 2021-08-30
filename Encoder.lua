@@ -1,4 +1,12 @@
-local Encoder = {};
+local Encoder = setmetatable({}, {
+	__index = function(t, k)
+		local inTable = t[k] ~= nil;
+		if inTable == true then
+			return t[k];
+		end;
+		return require(script:FindFirstChild(k));
+	end,
+})
 
 local POSITION_MULTIPLIER = 5;
 local Bits = Vector2.new(
