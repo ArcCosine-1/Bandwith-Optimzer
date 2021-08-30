@@ -1,7 +1,5 @@
 local Encoder = {};
 
-local Debris = game:GetService("Debris");
-
 local POSITION_MULTIPLIER = 5;
 local Bits = Vector2.new(
 	0b0000_0000_1111_1111,
@@ -47,7 +45,7 @@ function Encoder.EncodePositioningData(data)
 			xyBits(vector.Z, POSITION_MULTIPLIER)
 		);
 	elseif dataType == "cframe" then
-		local sx, sy, sz, m00, m01, m02, m10, m11, m12, m20, m21, m22 = CFrame:GetComponents();
+		local sx, sy, sz, m00, m01, m02, m10, m11, m12, m20, m21, m22 = data:GetComponents();
 		
 		local Position = Vector3.new(sx, sy, sz);
 		local Orientation do
@@ -87,13 +85,10 @@ function Encoder.DecodePositioningData(data)
 			bit32.extract(y, 0, 8)
 		)/multiplier;
 	elseif dataType == "table" then
-		local position = dataType[1];
-		local orientation = dataType[2];
+		local position = Encoder.DecodePositioningData(data[1]);
+		local orientation = Encoder.DecodePositioningData(data[2]);
 		
-		return CFrame.new(
-			Encoder.DecodePositioningData(position), 
-			Encoder.DecodePositioningData(orientation)
-		);
+		return CFrame.new(position, orientation);
 	end;
 end;
 
