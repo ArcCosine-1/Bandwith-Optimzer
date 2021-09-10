@@ -1,103 +1,109 @@
-local Encoder = setmetatable({}, {
-	__index = function(t, k)
-		local inTable = t[k] ~= nil;
-		if inTable == true then
-			return t[k];
-		end;
-		return require(script:FindFirstChild(k));
-	end,
-})
+local DataCompressionMethods = {};
 
-local POSITION_MULTIPLIER = 5;
 local Bits = Vector2.new(
 	0b0000_0000_1111_1111,
 	0b1111_1111_0000_0000
 );
 
-local function roundVector(vector, bit: number)
-	if bit == 0 then
-		return Vector3.new(
-			math.floor(POSITION_MULTIPLIER*vector.X + 0.5),
-			math.floor(POSITION_MULTIPLIER*vector.Y + 0.5),
-			math.floor(POSITION_MULTIPLIER*vector.Z + 0.5)
-		);
-	elseif bit == 1 then
-		return Vector2.new(
-			math.floor(POSITION_MULTIPLIER*vector.X + 0.5),
-			math.floor(POSITION_MULTIPLIER*vector.Y + 0.5)
-		);
-	else
-		error("Bit not accepted", 2);
-	end;
-end;
+local math_floor = math.floor;
+local math_atan2 = math.atan2;
+local math_asin = math.asin;
 
-local function xyBits(n1, n2)
-	return bit32.band(n1, Bits.X) + bit32.band(bit32.lshift(n2, 8), Bits.Y);
-end;
+local bit32_band = bit32.band;
+local bit32_lshift = bit32.lshift;
+local bit32_extract = bit32.extract;
 
-function Encoder.EncodePositioningData(data)
-	local dataType = typeof(data):lower();
+local typeof = typeof;
+
+DataCompressionMethods.Vector3 = {} do
+	local VECTORMULTIPLER = 5;
 	
-	if dataType == "vector3" then
-		local vector = roundVector(data, 0);
-		
-		return Vector3int16.new(
-			xyBits(vector.X, vector.Y),
-			xyBits(vector.Z, POSITION_MULTIPLIER)
+	local function roundVector(vector)
+		return Vector3.new(
+			math_floor(VECTORMULTIPLER*vector.X + 0.5),
+			math_floor(VECTORMULTIPLER*vector.Y + 0.5),
+			math_floor(VECTORMULTIPLER*vector.Z + 0.5)
 		);
-	elseif dataType == "vector2" then
-		local vector = roundVector(data, 1);
+	end;
+	
+	local function xyBits(n1, n2)
+		return bit32_band(n1, Bits.X) + bit32_band(bit32_lshift(n2, 8), Bits.Y);
+	end;
+	
+	function DataCompressionMethods.Vector3.Encode(vector)
+		local vector = roundVector(vector);
 		
 		return Vector2int16.new(
 			xyBits(vector.X, vector.Y),
-			xyBits(vector.Z, POSITION_MULTIPLIER)
+			xyBits(vector.Z, VECTORMULTIPLER)
 		);
-	elseif dataType == "cframe" then
-		local sx, sy, sz, m00, m01, m02, m10, m11, m12, m20, m21, m22 = data:GetComponents();
+	end;
+	
+	function DataCompressionMethods.Vector3.Decode(vector)
+		local x, y = vector.X, vector.Y;
+		local multiplier = bit32_extract(y, 8, 8);
+		
+		return Vector3.new(
+			bit32_extract(x, 0, 8),
+			bit32_extract(x, 8, 8),
+			bit32_extract(y, 0, 8)
+		)/multiplier;
+	end;
+	
+	DataCompressionMethods.Vector3.EncodeType = "Vector3";
+	DataCompressionMethods.Vector3.DecodeType = "Vector2int16";
+end;
+
+DataCompressionMethods.CFrame = {} do
+	function DataCompressionMethods.CFrame.Encode(cframe)
+		local sx, sy, sz, m00, m01, m02, m10, m11, m12, m20, m21, m22 = cframe:GetComponents();
 		
 		local Position = Vector3.new(sx, sy, sz);
 		local Orientation do
-			local X = math.atan2(-m12, m22);
-			local Y = math.asin(m02);
-			local Z = math.atan2(-m01, m00);
+			local ox = math_atan2(-m12, m22);
+			local oy = math_asin(m02);
+			local oz = math_atan2(-m01, m00);
 			
-			Orientation = Vector3.new(X, Y, Z);
+			Orientation = Vector3.new(ox, oy, oz);
 		end;
 		
 		return {
-			Encoder.EncodePositioningData(Position),
-			Encoder.EncodePositioningData(Orientation),
+			DataCompressionMethods.Encode(Position),
+			DataCompressionMethods.Encode(Orientation),
 		};
 	end;
-end;
-
-function Encoder.DecodePositioningData(data)
-	local dataType = typeof(data):lower();
 	
-	if dataType == "vector3int16" then
-		local x, y = data.X, data.Y;
-		local multiplier = bit32.extract(y, 8, 8);
+	function DataCompressionMethods.CFrame.Decode(cframe)
+		local Position = DataCompressionMethods.Decode(cframe[1]);
+		local Orientation = DataCompressionMethods.Decode(cframe[2]);
 		
-		return Vector3.new(
-			bit32.extract(x, 0, 8),
-			bit32.extract(x, 8, 8),
-			bit32.extract(y, 0, 8)
-		)/multiplier;
-	elseif dataType == "vector2int16" then
-		local x, y = data.X, data.Y;
-		local multiplier = bit32.extract(y, 8, 8);
-
-		return Vector2.new(
-			bit32.extract(x, 0, 8),
-			bit32.extract(x, 8, 8),
-			bit32.extract(y, 0, 8)
-		)/multiplier;
-	elseif dataType == "table" then
-		local position = Encoder.DecodePositioningData(data[1]);
-		local orientation = Encoder.DecodePositioningData(data[2]);
-		
-		return CFrame.new(position, orientation);
+		return CFrame.lookAt(Position, Orientation);
 	end;
+	
+	DataCompressionMethods.CFrame.EncodeType = "CFrame";
+	DataCompressionMethods.CFrame.DecodeType = "table";
 end;
 
-return Encoder;
+DataCompressionMethods.string = {} do
+	
+end;
+
+local function InheritCallback(data, prefix)
+	local dataType = typeof(data);
+	local compressionMethod = DataCompressionMethods[dataType];
+	local validType = string.format("%sType", prefix);
+	
+	assert(compressionMethod[validType] == dataType, "Invalid request.");
+	
+	return compressionMethod[prefix];
+end;
+
+function DataCompressionMethods.Encode(data)
+	return InheritCallback(data, "Encode")(data);
+end;
+
+function DataCompressionMethods.Decode(data)
+	return InheritCallback(data, "Decode")(data);
+end;
+
+return DataCompressionMethods;
