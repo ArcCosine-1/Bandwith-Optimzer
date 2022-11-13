@@ -111,6 +111,9 @@ local MakeEnum : any? do
 			__newindex = function(_, Key : string)
 				error(ErrorFormat:format(Key, EnumFormat), 2);
 			end,
+			__metatable = function() : nil
+				return (nil);
+			end,
 		}));
 	end;
 end;
