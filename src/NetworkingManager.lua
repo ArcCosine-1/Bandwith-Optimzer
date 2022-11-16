@@ -125,9 +125,14 @@ end;
 local Network : any? do
 	local DebounceLeeway : number = 2;
 
-	local function IsAlive(Character : Model) : boolean
+	local function IsAlive(Character : Model?) : boolean
+		if (Character == nil) then
+			return (false);
+		end;
+		
 		local Humanoid : Humanoid = Character.Humanoid;
-		return (Character ~= nil and Humanoid.Health > 0 and Humanoid:GetStateType() ~= Enum.HumanoidStateType.Dead);
+		
+		return (Humanoid ~= nil and Humanoid.Health > 0 and Humanoid:GetStateType() ~= Enum.HumanoidStateType.Dead);
 	end;
 
 	local function GetTransform(... : any) : (Player) -> (Player, ...any?)?
@@ -642,7 +647,7 @@ function NetworkingManager.Decompress.Vector2(EncodedVector : string, Compressio
 	return (ExtractIntoDatatype(Combined, ASign, BSign, Vector2));
 end;
 
-function NetworkingManager.Compress.GridPosition(Position : Vector2, Rotation : number, CompressionBase : number?) : string
+function NetworkingManager.Compress.GridPosition(Position : Vector2, Rotation : number?, CompressionBase : number?) : string
 	local CompressionBase : number = CompressionBase or MaxBase;
 	
 	local X : number, Y : number = RoundVector(Position	);
@@ -651,13 +656,21 @@ function NetworkingManager.Compress.GridPosition(Position : Vector2, Rotation : 
 		CompressionBase
 	);
 	
+	if (Rotation == nil) then
+		return (CompressedPosition);
+	end;
+	
 	local CompressedRotation : string = EncodeWithBase(math.floor(OrientationMultiplier * Rotation + 0.5), CompressionBase);
 	
 	return (CompressedPosition .. SplitCharacter .. CompressedRotation);
 end;
 
-function NetworkingManager.Decompress.GridPosition(EncodedData : string, Axis : Vector3?, CompressionBase : number?) : CFrame
-	local Axis : Vector3 = Axis or Vector3.new(0, 1, 0);
+function NetworkingManager.Decompress.GridPosition(
+	EncodedData : string, 
+	IncludeRotation : boolean?, 
+	Axis : Vector3?, 
+	CompressionBase : number?
+) : CFrame
 	local CompressionBase : number = CompressionBase or MaxBase;
 	
 	local Data : Array<string> = EncodedData:split(SplitCharacter);
@@ -675,9 +688,14 @@ function NetworkingManager.Decompress.GridPosition(EncodedData : string, Axis : 
 		local Z : number = (bit32.extract(Combined, 8, 8)*BSign)/CoordMultiplier;
 		
 		Position = CFrame.new(X, 0, Z);
+		
+		if (IncludeRotation ~= nil and IncludeRotation == false) then
+			return (Position);
+		end;
 	end;
 	
-	local Rotation : number = DecodeWithBase(EncodedPosition, CompressionBase)/OrientationMultiplier;
+	local Axis : Vector3 = Axis or Vector3.new(0, 1, 0);
+	local Rotation : number = DecodeWithBase(EncodedRotation, CompressionBase)/OrientationMultiplier;
 	
 	return (Position*CFrame.fromAxisAngle(Axis, Rotation));
 end;
